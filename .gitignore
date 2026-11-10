@@ -1,0 +1,34 @@
+# Secrets & local environment
+.env
+.env.*
+!.env.example
+
+# Python cache & virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+venv_wsl/
+.venv/
+
+# Large model checkpoints (downloaded separately)
+checkpoints/
+*.pt
+*.pth
+*.safetensors
+
+# Local scratch, backups, diagnostics & runtime outputs
+_exp_backup/
+_orig_*.bak
+_*.sh
+_*.txt
+_rim_vis.png
+nutrilens_result_*.jpg
+photo_*.jpg
+
+# Local test / legacy scratch scripts & user recipe override
+batch_verify.py
+test_depth.py
+test_new_image.py
+DOCUMENTATION.md
+recipe.json

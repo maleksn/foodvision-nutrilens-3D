@@ -79,7 +79,18 @@ The pipeline uses three foundational computer vision models running concurrently
 
 ---
 
-## 2. Before vs. After: The Four Critical Scientific Breakthroughs
+## 2. Before vs. After: Step-by-Step Visual Walkthrough & Scientific Breakthroughs
+
+### Step-by-Step Visual Progression (Single Photo Benchmark)
+
+| Step 1: Raw Input Photo | Step 2: Rim Circle Isolation | Step 3: BEFORE (Planar Rim Only) | Step 4: AFTER (Parabolic Cavity Model) |
+| :---: | :---: | :---: | :---: |
+| ![Raw Input Photo](assets/step1_input_rice.jpg) | ![Hough Rim Isolation](assets/step2_rim_isolation.png) | ![Before Cavity Fix - 57g](assets/step3_before_cavity_fix.jpg) | ![After Cavity Fix - 140g](assets/step4_after_cavity_fix.jpg) |
+| **Ground Truth:** `140.0 g` yellow rice on a 20 cm ceramic side plate (no markers). | **Breakthrough 2:** Rejects table box (93% area) & isolates circular plate rim (`r = 403 px`). | **Phase 2/3 Output:** **`57g (64 kcal)`** (`-59.2%` error) — rice inside the concave dish cavity is zeroed out. | **Phase 4 Final Output:** **`140g (157 kcal)`** (`140.5 g`, **`99.64%` accuracy**). |
+
+---
+
+### Quantitative Progression Across Phases
 
 The research trajectory progressed through four distinct phases, diagnosing and resolving fundamental physical and geometric bottlenecks:
 
@@ -122,7 +133,7 @@ The research trajectory progressed through four distinct phases, diagnosing and 
 * **The Problem:** Standard 3D integration algorithms assume food rests on a flat cutting board or tabletop. Ceramic plates and bowls have a **raised rim** and a **concave, recessed bottom**.
   Fitting a planar base surface through the plate rim placed the reference elevation at the level of the rim. The rice pile only protruded $\sim 0.58\text{ cm}$ above this rim plane ($84.9\text{ cm}^3 \to 57.1\text{ g}$). All rice resting inside the dish cavity below the rim was zeroed out by `np.maximum(heights, 0.0)`.
 * **The Fix (Parabolic Cavity Model):** Added container cavity modeling:
-  $$V_{\text{total}} = V_{\text{above\_rim}} + \left( A_{\text{contact}} \times H_{\text{cavity}} \times \alpha \right)$$
+  $$V_{\text{total}} = V_{\text{above rim}} + \left( A_{\text{contact}} \times H_{\text{cavity}} \times \alpha \right)$$
   Where $A_{\text{contact}} \approx 145\text{ cm}^2$, $H_{\text{cavity}} = 1.2\text{ cm}$, and parabolic curvature coefficient $\alpha = 0.70$.
   $$\text{Cavity Volume} = 145 \times (1.2 \times 0.70) = 121.8\text{ cm}^3$$
   $$V_{\text{total}} = 84.9 + 121.8 = 206.7\text{ cm}^3$$
@@ -211,52 +222,120 @@ To resolve the design question: *"Should the user choose the plate size or does 
 
 ---
 
-## 5. Operations & Developer Guide
+## 5. How to Use (Installation & Quickstart)
 
-### 5.1 How to Start the Server
-The FastAPI backend runs inside WSL2 with GPU acceleration.
+### Repository Structure
+```text
+foodvision-nutrilens-3D/
+├── main.py                  # FastAPI server & end-to-end 3D inference pipeline
+├── container_calibrator.py  # Container/plate detection, Hough rim isolation & metric scale calibration
+├── volume_integrator.py     # Support plane fitting, parabolic cavity modeling & porosity integration
+├── usda_client.py           # USDA FoodData Central API client + offline nutritional fallback
+├── requirements.txt         # Python dependencies
+├── .env.example             # Environment variable template (USDA_API_KEY, SAM2_CHECKPOINT)
+├── recipe.example.json      # Optional default ingredients list template
+└── assets/                  # Sample input photo & step-by-step Before/After visual results
+```
+
+### 5.1 Prerequisites & Installation
+
+* **Python:** `3.10+`
+* **Hardware:** NVIDIA GPU with CUDA (`>= 6 GB VRAM` recommended for SAM 2.1 + Metric3D v2), or CPU fallback (slower).
+* **System tools:** `git`
 
 ```bash
-# 1. Open WSL terminal
-wsl
+# 1. Clone the repository
+git clone https://github.com/maleksn/foodvision-nutrilens-3D.git
+cd foodvision-nutrilens-3D
 
-# 2. Navigate to backend directory
-cd /mnt/d/NutriLens_Backend
+# 2. Create and activate a Python virtual environment
+python3 -m venv venv
+source venv/bin/activate        # On Windows PowerShell: .\venv\Scripts\Activate.ps1
 
-# 3. Export model cache paths to disk D:
-export HF_HOME=/mnt/d/AI_Models_Cache/huggingface
-export TORCH_HOME=/mnt/d/AI_Models_Cache/torch
+# 3. Install PyTorch (match your CUDA version from https://pytorch.org/get-started/locally/)
+# Example for CUDA 12.4:
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
 
-# 4. Launch Uvicorn with the WSL virtual environment
-/mnt/d/NutriLens_Backend/venv_wsl/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+# 4. Install project dependencies (FastAPI, Transformers, OpenCV, SAM 2.1, etc.)
+pip install -r requirements.txt
 ```
-Verify the server status:
-```bash
-curl -s http://127.0.0.1:8000/health
-# Expected Output: {"status":"online","device":"cuda","gpu_name":"NVIDIA GeForce RTX 3060",...}
-```
+
+### 5.2 Download Model Weights & Configure `.env`
+
+1. **SAM 2.1 Checkpoint (Required):** Download `sam2.1_hiera_large.pt` from Meta's official SAM 2.1 release into `./checkpoints/`:
+   ```bash
+   mkdir -p checkpoints
+   curl -L -o checkpoints/sam2.1_hiera_large.pt \
+     https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_large.pt
+   ```
+   *(Grounding DINO `IDEA-Research/grounding-dino-tiny` and Metric3D v2 `metric3d_vit_large` download automatically via HuggingFace and `torch.hub` on first startup. You can optionally set `HF_HOME` and `TORCH_HOME` to control where they are cached.)*
+
+2. **Environment Configuration (Optional):** Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+   Add a free [USDA FoodData Central API key](https://fdc.nal.usda.gov/api-key-signup.html) to `USDA_API_KEY` if you want live cloud nutrition lookups. If omitted, `usda_client.py` automatically falls back to built-in standard nutritional profiles.
 
 ---
 
-### 5.2 How to Analyze Any Image via API
-Send a `POST` request with `multipart/form-data`:
+### 5.3 Start the Backend Server
 
 ```bash
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+Verify the server is online:
+```bash
+curl -s http://127.0.0.1:8000/health
+# Expected Output: {"status":"online","device":"cuda","gpu_name":"...","models_loaded":[],"sam2_checkpoint_found":true}
+```
+You can also open the interactive Swagger UI in your browser at `http://127.0.0.1:8000/docs`.
+
+---
+
+### 5.4 Run Inference on the Sample Image (or Your Own Photo)
+
+Test right away using the included sample rice photo (`assets/step1_input_rice.jpg`, ground truth `140.0 g`):
+
+#### Using `curl`
+```bash
 curl -X POST "http://127.0.0.1:8000/analyze-image" \
-  -F "file=@/path/to/your/food_photo.jpg" \
-  -F "ingredients=cooked rice, chicken, salad" \
-  -F "container_type=salad_plate"
+  -F "file=@assets/step1_input_rice.jpg" \
+  -F 'ingredients=["cooked rice","yellow rice","rice"]' \
+  -F "container_type=salad_plate" \
+  -F "focal_length_35mm=23.0"
+```
+
+#### Using Python (`requests`)
+```python
+import requests
+
+url = "http://127.0.0.1:8000/analyze-image"
+with open("assets/step1_input_rice.jpg", "rb") as img:
+    resp = requests.post(
+        url,
+        files={"file": img},
+        data={
+            "ingredients": "cooked rice, yellow rice, rice",
+            "container_type": "salad_plate",
+            "focal_length_35mm": "23.0",
+        },
+        timeout=120,
+    )
+data = resp.json()
+print("Total weight (g):", data["total_meal"]["weight_g"])
+print("Calories (kcal):", data["total_meal"]["calories"])
 ```
 
 #### Key API Request Fields:
 * `file` *(Required, Binary)*: JPEG or PNG food photo.
-* `ingredients` *(Optional, String)*: Comma-separated candidate labels (e.g. `"cooked rice, chicken, broccoli"`). If omitted, defaults to general food categories.
-* `container_type` *(Optional, String)*: Preset identifier (`"salad_plate"`, `"dinner_plate"`, `"round_bowl"`, `"flat_tray"`, or `"default_plate"`). Defaults to `"salad_plate"`.
+* `ingredients` *(Optional, String or JSON array)*: Comma-separated or JSON list of candidate food labels (e.g. `"cooked rice, chicken, broccoli"`). If omitted, reads `recipe.json` (if present) or defaults to general food categories.
+* `container_type` *(Optional, String)*: Preset identifier (`"salad_plate"`, `"dinner_plate"`, `"round_bowl"`, `"small_glass_bowl"`, `"flat_tray"`, or `"default_plate"`). Defaults to `"dinner_plate"` in the API if omitted (`"salad_plate"` recommended for standard 20 cm side plates).
 * `focal_length_35mm` *(Optional, Float)*: Explicit 35mm equivalent focal length in mm (e.g. `23.0` for S23 Ultra wide lens, `24.0` for iPhone 15 Pro). If omitted, automatically extracted from EXIF or defaulted to `23.0`.
 
 ---
 
-### 5.3 How to Add a New Container or Custom Cavity Depth
+### 5.5 How to Add a New Container or Custom Cavity Depth
 Container profiles are defined in `container_calibrator.py` in the `STANDARD_CONTAINERS` dictionary.
 
 To add a new container (e.g., an Oval Pasta Dish):
@@ -277,7 +356,7 @@ STANDARD_CONTAINERS = {
 
 ---
 
-### 5.4 How to Add New Foods, Porosities, and Densities
+### 5.6 How to Add New Foods, Porosities, and Densities
 Food density and porosity tables reside in `volume_integrator.py` and `usda_client.py`.
 
 #### Adding Material Porosity (Air Fraction) in `volume_integrator.py`:
@@ -306,7 +385,7 @@ FOOD_DENSITY_TABLE = {
 
 ---
 
-### 5.5 How to Override Camera Focal Length for Different Smartphones
+### 5.7 How to Override Camera Focal Length for Different Smartphones
 If images are sent from mobile clients that strip EXIF tags (e.g., compressed uploads via WhatsApp or Telegram), pass `focal_length_35mm` in the API form:
 
 | Smartphone Device | Main Camera Lens | Sensor Size | 35mm Equivalent Focal Length |
@@ -323,9 +402,10 @@ formData.append('focal_length_35mm', '23.0');
 
 ---
 
-## 6. Real Benchmark Result (Samsung Galaxy S23 Ultra Test)
+## 6. Real Benchmark Results & Multi-Item Validation
 
-**Input Image:** `photo_2026-09-28_15-42-47.jpg`  
+### Single-Item Scale Benchmark (Samsung Galaxy S23 Ultra)
+**Input Image:** [`assets/step1_input_rice.jpg`](assets/step1_input_rice.jpg) (`photo_2026-09-28_15-42-47.jpg`)  
 **Ground Truth Weight:** **`140.0 g`** (Cooked yellow seasoned rice on a ceramic side plate)
 
 ### API Output JSON Payload:
@@ -378,6 +458,13 @@ formData.append('focal_length_35mm', '23.0');
   "annotated_image_path": "nutrilens_result_1790602611.jpg"
 }
 ```
+
+### Multi-Item & Multi-Container Visual Results
+
+| Metric3D v2 Depth Estimation | Multi-Item Weight & Macro Overlay | Multi-Container Meal-Prep Segmentation |
+| :---: | :---: | :---: |
+| ![Metric3D Depth Map](assets/multi_item_depth_map.jpg) | ![Multi-Item Chicken & Fries Result](assets/multi_item_result.jpg) | ![Multi-Container Meal Prep Validation](assets/meal_prep_validation.jpg) |
+| Side-by-side input RGB and calibrated Metric3D v2 metric depth map (mean distance `58.8 cm`). | Shredded cooked chicken (`114g, 200 kcal`) + French fries (`26g, 77 kcal`) on a single plate. | Grounding DINO + SAM 2.1 food masks paired with Metric3D depth across 7 containers. |
 
 ---
 
