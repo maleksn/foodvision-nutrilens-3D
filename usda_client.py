@@ -3,22 +3,24 @@ import urllib.request
 import urllib.parse
 import json
 
-# Fallback scientific food densities (g / cm^3) accounting for food state and porosity
+# Intrinsic cooked food material densities rho_intrinsic (g / cm^3) of individual food elements.
+# Macroscopic inter-granular packing void fraction (Phi) is modeled separately in FOOD_POROSITY_TABLE
+# such that effective bulk density is rho_bulk = (1 - Phi) * rho_intrinsic.
 FOOD_DENSITY_TABLE = {
     "chicken": 0.95,
     "cooked chicken": 0.95,
     "shredded cooked chicken": 0.92,
     "grilled chicken": 0.95,
-    "french fries": 0.52,   # Fried potatoes with porosity/air gaps
+    "french fries": 0.52,   # Intrinsic cooked potato strip density (moisture-reduced via frying)
     "fries": 0.52,
     "potato": 0.75,
-    "rice": 0.82,           # Cooked white/brown rice packed
+    "rice": 0.82,           # Intrinsic hydrated starch kernel density (cooked rice)
     "cooked rice": 0.82,
-    "broccoli": 0.40,       # Florets with significant air gaps
+    "broccoli": 0.40,       # Intrinsic fibrous floret head density
     "steamed broccoli": 0.42,
     "chickpeas": 0.88,      # Cooked chickpeas
-    "green beans": 0.55,    # Whole green beans with stacking voids
-    "hummus": 1.05,         # Dense paste/puree
+    "green beans": 0.55,    # Intrinsic hollow-pod green bean density
+    "hummus": 1.05,         # Dense paste/puree (Phi = 0)
     "sauce": 1.02,
     "beef": 1.02,
     "meat": 1.02,

@@ -83,7 +83,7 @@ def get_models():
         models["metric3d"] = depth_model.to(DEVICE).eval()
     return models
 
-def get_camera_intrinsics(image_pil, resized_width, focal_override=None):
+def get_camera_intrinsics(image_pil, resized_width, resized_height=None, focal_override=None):
     """Extract 35mm equivalent focal length from EXIF or fallback to standard phone lens (23mm)."""
     if focal_override and focal_override > 0:
         focal_length_35mm = float(focal_override)
@@ -98,7 +98,12 @@ def get_camera_intrinsics(image_pil, resized_width, focal_override=None):
                     break
         if focal_length_35mm is None:
             focal_length_35mm = 23.0  # Standard modern smartphone wide camera equivalent
-    f_pixel = (focal_length_35mm / 36.0) * resized_width
+    if resized_height is None:
+        if hasattr(image_pil, "size"):
+            _, resized_height = image_pil.size
+        else:
+            resized_height = resized_width
+    f_pixel = (focal_length_35mm / 36.0) * max(resized_width, resized_height)
     return f_pixel, f_pixel
 
 def backproject_pixels(depth_map, fx, fy, cx, cy):
@@ -234,7 +239,7 @@ async def analyze_image(
         food_masks = np.array([masks > 0.0])
     
     # 6. Run Metric3D ViT-Large Metric Depth Estimation
-    fx, fy = get_camera_intrinsics(image_pil, W_orig, focal_override=focal_length_35mm)
+    fx, fy = get_camera_intrinsics(image_pil, W_orig, H_orig, focal_override=focal_length_35mm)
     cx = W_orig / 2.0
     cy = H_orig / 2.0
     intrinsic = [fx, fy, cx, cy]
